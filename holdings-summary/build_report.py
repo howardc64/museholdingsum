@@ -252,7 +252,9 @@ def _line_chart(series, title, ylabel, legend=True, bars=None, emphasis=None, hl
     ax.axhline(0, color='#888', linewidth=0.8)
     ax.set_title(title, fontsize=12, weight='bold')
     ax.set_ylabel(ylabel)
-    ax.xaxis.set_major_locator(mdates.YearLocator())
+    # major ticks at year-ENDS (Dec 31) labeled with that year, so an annual
+    # point never visually merges with the next January tick
+    ax.xaxis.set_major_locator(mdates.MonthLocator(bymonth=12, bymonthday=31))
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
     ax.xaxis.set_minor_locator(mdates.MonthLocator(bymonth=(1, 4, 7, 10)))
     ax.margins(x=0.04)
