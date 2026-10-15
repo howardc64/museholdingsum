@@ -4,16 +4,17 @@
 
 ## How to run this
 
-The agent requires two inputs:
+The agent requires two inputs, with an optional third:
 
-1. A **holdings config file** — portfolio types, accounts, and yield overrides (e.g. `RLT holdings.txt`).
-2. A **summary CSV file** — the account statements file with Year, Period, Account, Beginning Value, Net Changes, Investment Value Change, and Ending Value per account per period (e.g. `RLT stmts.csv`). Period is `Annual` for yearly rows and `Q1`–`Q4` for quarterly rows. Used for the Gross TWR section (annual rows only).
+1. A **holdings config file** — portfolio types, accounts, and yield overrides (e.g. `HN holdings.txt`).
+2. A **statements CSV file** — the account statements file with Year, Period, Account, Beginning Value, Net Changes, Investment Value Change, and Ending Value per account per period (e.g. `NH stmts.csv`). Period is `Annual` for yearly rows and `Q1`–`Q4` for quarterly rows. Used for the Gross TWR section (annual rows only).
+3. A **transaction history CSV** (optional) — deducted advisory/alternative-investment fees, added back so returns are gross of fees. Pass `none` when no fee file exists for these accounts; the report then notes fee data is unavailable and computes TWR without a fee add-back.
 
 Howard launches it like:
 
-> Run the holdings summary against `<holdings config>` and `<summary CSV>`.
+> Run the holdings summary against `<holdings config>` and `<statements CSV>` [`<transaction history CSV>` | `none`].
 
-Without both files, stop and ask for the missing one. The agent needs nothing else.
+Without the holdings config and statements CSV, stop and ask for the missing one. The agent needs nothing else.
 
 ## Holdings config file format
 
@@ -74,9 +75,11 @@ Build a **self-contained HTML file** named `holdings-summary-<YYYY-MM-DD>.html` 
 
 ### 2. Portfolio view (first)
 
-Heading `Holdings by Portfolio`, the pie chart at the top, then one table per portfolio (in config order):
+Heading `Holdings by Portfolio`. Three charts side by side at the top, then one table per portfolio (in config order):
 
 | Account | Market value | % of portfolio | Cost basis | Unrealized G/L |
+
+- Chart 1: portfolio pie chart. Chart 2: Gross TWR — annual bars at each year-end with a smooth (monotone-cubic) line running through the annuals and continuing through the cumulative year-to-date quarterly points, on a true calendar date axis. Chart 3: Historical Yield — 10-year x scale; smooth lines of the trailing 1-year total return at each quarter-end, one thin muted line per portfolio with the Total line drawn thick and dark on top, same date-axis treatment. A dashed horizontal line marks the Total's trailing 10-year annualized average, labeled with its % value at the right end. No data-point markers on the lines; each line starts with a mirrored ghost sample (flat clamped start) so it never implies enormous prior data. A caption under the charts explains the quarterly points.
 
 - One row per account holding the portfolio, in config account order. The Account column uses the same `<Broker> …<mask>` format.
 - The portfolio total is the **last row of the table** (a SUM row labeled "Total").
@@ -109,13 +112,14 @@ Heading `Gross TWR`. One table for the combined portfolio (all accounts in the c
 
 Column rules:
 - Annual columns: the 5 completed years before the quarterly year (or the 5 most recent annual years if the CSV has no quarterly rows), newest year on the left. No older years appear.
-- Quarterly columns: for the latest year that has quarterly rows (`Q1`–`Q4`), one column per quarter, newest quarter on the left (Q4, Q3, Q2, Q1), placed before the annual columns. Each quarterly column is cumulative year-to-date from Jan 1 through that quarter end: Start Value = Jan 1 portfolio value; Net Flows = Σ Net Changes for Q1 through that quarter; End Value = Σ Ending Value at that quarter end; Investment Change = End − Start − Net Flows; Gross TWR = (Investment Change + fees deducted through that quarter) ÷ (Start Value + ½ × Net Flows). Quarters that have not ended yet stay blank.
+- Quarterly columns: for the latest year that has quarterly rows (`Q1`–`Q4`), one column per quarter, newest quarter on the left (Q4, Q3, Q2, Q1), placed before the annual columns. Each quarterly column is cumulative year-to-date from Jan 1 through that quarter end: Start Value = Jan 1 portfolio value; Net Flows = Σ Net Changes for Q1 through that quarter; End Value = Σ Ending Value at that quarter end; Investment Change = End − Start − Net Flows; Gross TWR = (Investment Change + fees deducted through that quarter) ÷ (Start Value + ½ × Net Flows). Quarters that have not ended yet stay blank. Quarterly columns are shown only when every account in the annual table has at least one quarterly row for that year — otherwise a "combined" quarterly column would silently exclude accounts, so they are omitted.
 - If an account is missing a quarterly row (e.g. no Q1 statement), begin it at its prior year-end value and end it at its next known quarter boundary, with no flow split for the missing quarter.
+- The report filename and title follow the holdings config: `HN holdings.txt` → `hn-holdings-summary-<date>.html` ("HN holdings Summary"); `GJ-holdings.txt` → `gj-idgt-holdings-summary-<date>.html` ("GJ-IDGT holdings Summary"); `Lily holdings.txt` → `lily-holdings-summary-<date>.html` ("Lily holdings Summary"). Distinct prefixes keep reports from overwriting each other.
 
 Method:
 1. Source: the account statements CSV given as the second input: Year, Period, Account, Beginning Value, Net Changes, Investment Value Change, Ending Value. Use only rows with Period `Annual` for this section.
 2. Combine across the config's accounts per year: Start Value = Σ Beginning Value; Net Flows = Σ Net Changes; Investment Change = Σ Investment Value Change; End Value = Σ Ending Value.
-3. Gross TWR per year = (Σ Investment Value Change + Fees) ÷ (Σ Beginning Value + ½ × Σ Net Changes), where Fees is that year's deducted advisory/alternative-investment fees from the transaction history CSV (added back so the return is gross of fees). Flows are assumed mid-year. Percentage with 1 decimal.
+3. Gross TWR per year = (Σ Investment Value Change + Fees) ÷ (Σ Beginning Value + ½ × Σ Net Changes), where Fees is that year's deducted advisory/alternative-investment fees from the transaction history CSV when one is provided (added back so the return is gross of fees; 0 when no fee file exists). Flows are assumed mid-year. Percentage with 1 decimal.
 4. Footnote the sources and the mid-year flow assumption.
 5. Below the table, a line reading `Gross TWR annual averages — 1yr avg: %, 3yr avg: %, 5yr avg: %`, where each is the geometric mean of the newest 1, 3, and 5 annual TWRs (annualized).
 
