@@ -186,50 +186,69 @@ def val_now_reit_price():
     q = sum(r['qty'] for r in positions if canon(r['ticker']) == 'REIT')
     return v / q if q else 0
 
-# ---------------- pie chart ----------------
+# ---------------- allocation donut chart (portfolio view) ----------------
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import math
 vals = [port_total[p] for p in port_names if port_total[p] > 0]
 labels = [p for p in port_names if port_total[p] > 0]
-fig, ax = plt.subplots(figsize=(8, 5))
-wedges, _ = ax.pie(vals, startangle=90, counterclock=False)
-ax.legend(wedges, labels, loc='center left', bbox_to_anchor=(1, 0.5))
-for w, v in zip(wedges, vals):
-    ang = math.radians((w.theta2 + w.theta1) / 2)
-    ax.text(0.62 * math.cos(ang), 0.62 * math.sin(ang),
-            f"${v:,.0f}\n{v/grand*100:.1f}%", ha='center', va='center',
-            color='white', weight='bold', fontsize=10)
-ax.set_title(f"Holdings by Portfolio — ${grand:,.0f} total", fontsize=13, weight='bold')
-buf = io.BytesIO(); fig.savefig(buf, format='png', bbox_inches='tight'); plt.close(fig)
-chart_b64 = base64.b64encode(buf.getvalue()).decode()
+_pairs = sorted(zip(vals, labels), key=lambda t: -t[0])
+vals = [v for v, _ in _pairs]
+labels = [l for _, l in _pairs]
+_palette = ['#6ba3be', '#a8bfa0', '#b0a191', '#b9a7c9', '#8fb8b0', '#c9a86a']
+_dcolors = [_palette[i % len(_palette)] for i in range(len(vals))]
+_fig0, (_axd, _axl) = plt.subplots(1, 2, figsize=(10, 4.5), gridspec_kw={'width_ratios': [1, 1.15]})
+_axd.pie(vals, colors=_dcolors, startangle=90, counterclock=False,
+         wedgeprops=dict(width=0.42, edgecolor='white', linewidth=2))
+_axd.text(0, 0.10, 'TOTAL VALUE', ha='center', va='center', fontsize=11, color='#777')
+_axd.text(0, -0.14, f"${grand:,.0f}", ha='center', va='center', fontsize=22, weight='bold')
+_axd.axis('equal')
+_axl.axis('off')
+_axl.text(0.0, 0.92, 'Category', fontsize=11, color='#777', transform=_axl.transAxes, va='center')
+_axl.text(1.0, 0.92, 'Current (%)', fontsize=11, color='#777', transform=_axl.transAxes, va='center', ha='right')
+for _i, (_lb, _v) in enumerate(zip(labels, vals)):
+    _y = 0.78 - _i * 0.17
+    _axl.plot(0.035, _y, 'o', color=_dcolors[_i], markersize=11, transform=_axl.transAxes, clip_on=False)
+    _axl.text(0.09, _y, _lb, fontsize=12, weight='bold', transform=_axl.transAxes, va='center')
+    _axl.text(0.99, _y, f"{_v/grand*100:.2f}%", fontsize=12, transform=_axl.transAxes, va='center', ha='right')
+    _axl.plot([0, 1], [_y - 0.085, _y - 0.085], color='#e0e0e0', linewidth=0.8,
+              transform=_axl.transAxes, clip_on=False)
+_buf0 = io.BytesIO(); _fig0.savefig(_buf0, format='png', bbox_inches='tight'); plt.close(_fig0)
+chart_b64 = base64.b64encode(_buf0.getvalue()).decode()
 
 # ---------------- smooth time-series line chart helper ----------------
 import matplotlib.dates as mdates
 import numpy as _np
 from scipy.interpolate import PchipInterpolator
-def _line_chart(series, title, ylabel, legend=True, bars=None, emphasis=None, hlines=None):
+def _line_chart(series, title, ylabel, legend=True, bars=None, emphasis=None, hlines=None, ylim=None):
     # series: [(label, [(date, frac), ...])]; monotone-cubic (Pchip) smooth curve
     # on a true date axis — no overshoot between points, x spacing is calendar time.
     # A mirrored ghost sample (same value, one typical interval before the first
     # point) clamps the start flat so the curve never implies enormous prior data.
-    # `bars`: [(date, frac)] drawn behind the line. `emphasis`: label drawn thick
-    # and dark on top while the rest go thin and muted. `hlines`: [(frac, label)]
-    # horizontal dashed reference lines with a % label at the right end.
-    fig, ax = plt.subplots(figsize=(5.6, 4.2))
-    _items = [(lb, sorted(pts)) for lb, pts in series if pts]
-    if emphasis:
-        _items = [it for it in _items if it[0] != emphasis] + [it for it in _items if it[0] == emphasis]
+    # `bars`: [(date, frac)] drawn behind the line. `emphasis`: {label: color}
+    # drawn thick and opaque on top, in dict order; everything else goes thin and
+    # muted. A plain string is treated as {label: '#1a1a1a'}. `hlines`: [(frac,
+    # label)] horizontal dashed reference lines with a % label at the right end.
+    # `ylim`: fixed y-axis range (percent units), used to share a scale across charts.
+    fig, ax = plt.subplots(figsize=(5.6, 4.2), constrained_layout=True)
+    if ylim:
+        ax.set_ylim(ylim)
+    _emph = emphasis if isinstance(emphasis, dict) else ({emphasis: '#1a1a1a'} if emphasis else {})
+    _by_label = {lb: sorted(pts) for lb, pts in series if pts}
+    _ordered = [(lb, _by_label[lb]) for lb in _by_label if lb not in _emph]
+    for lb in _emph:
+        if lb in _by_label:
+            _ordered.append((lb, _by_label[lb]))
     _x_last = None
-    for label, pts in _items:
+    for label, pts in _ordered:
         ds = [d for d, _ in pts]
         ys = [v * 100 for _, v in pts]
         xs = list(mdates.date2num(ds))
-        _is_emph = (label == emphasis)
-        _lw = 3.5 if _is_emph else (2.2 if emphasis is None else 1.2)
-        _al = 1.0 if (_is_emph or emphasis is None) else 0.6
-        _col = '#1a1a1a' if _is_emph else None
+        _is_emph = label in _emph
+        _lw = 3.5 if _is_emph else (2.2 if not _emph else 1.2)
+        _al = 1.0 if (_is_emph or not _emph) else 0.6
+        _col = _emph.get(label) if _is_emph else None
         if len(pts) >= 2:
             _dxs = sorted(xs[i + 1] - xs[i] for i in range(len(xs) - 1))
             _dx = _dxs[len(_dxs) // 2]
@@ -242,8 +261,9 @@ def _line_chart(series, title, ylabel, legend=True, bars=None, emphasis=None, hl
     if hlines and _x_last is not None:
         for _hv, _hl in hlines:
             ax.axhline(_hv * 100, color='#777', linestyle='--', linewidth=1.4, zorder=3)
-            ax.annotate(_hl, xy=(_x_last, _hv * 100), xytext=(6, 4), textcoords='offset points',
-                        fontsize=9, color='#555', va='bottom', zorder=5)
+            ax.text(0.99, _hv * 100, _hl, transform=ax.get_yaxis_transform(),
+                    rotation=90, ha='center', va='center', fontsize=8, color='#555',
+                    bbox=dict(facecolor='white', edgecolor='none', pad=1.5), zorder=5)
     if bars:
         _bxs = mdates.date2num([d for d, _ in bars])
         _bys = [v * 100 for _, v in bars]
@@ -258,9 +278,9 @@ def _line_chart(series, title, ylabel, legend=True, bars=None, emphasis=None, hl
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
     ax.xaxis.set_minor_locator(mdates.MonthLocator(bymonth=(1, 4, 7, 10)))
     ax.margins(x=0.04)
-    if legend and len(_items) > 1:
+    if legend and len(_ordered) > 1:
         ax.legend(fontsize=8, loc='best')
-    buf = io.BytesIO(); fig.savefig(buf, format='png', bbox_inches='tight'); plt.close(fig)
+    buf = io.BytesIO(); fig.savefig(buf, format='png'); plt.close(fig)
     return base64.b64encode(buf.getvalue()).decode()
 
 # ---------------- portfolio view ----------------
@@ -403,16 +423,19 @@ for r in positions:
     _avg10_n += ar * r['val']; _avg10_d += r['val']
 _avg10 = _avg10_n / _avg10_d if _avg10_d > 0 else None
 _hl = [(_avg10, f"10-yr avg {_avg10*100:.1f}%")] if _avg10 is not None else None
-yield_chart_b64 = _line_chart(yield_series, "Historical Yield — trailing 1-yr", "Return %", emphasis="Total", hlines=_hl) if yield_series else ""
+# (yield chart is rendered after the TWR section so it can overlay the TWR curve)
 
 
 # ---------------- gross TWR (yearly summary CSV) ----------------
 twr_html = ""
 twr_chart_b64 = ""
-SUM_CSV = SUM_CSV_ARG or os.path.join(os.path.dirname(CONFIG), 'NH stmts.csv')
+yield_chart_b64 = ""
+_twr_pts = []
+_twr_bars = []
+SUM_CSV = None if (not SUM_CSV_ARG or SUM_CSV_ARG.lower() == 'none') else SUM_CSV_ARG
 TXN_ARG = sys.argv[3] if len(sys.argv) > 3 else ''
 TXN_CSV = None if TXN_ARG.lower() == 'none' else (TXN_ARG or os.path.join(os.path.dirname(CONFIG), 'Accounts_History_Merged.csv'))
-if os.path.exists(SUM_CSV):
+if SUM_CSV and os.path.exists(SUM_CSV):
     qall = list(csv.DictReader(open(SUM_CSV, encoding='utf-8-sig', newline='')))
     srows = [r for r in qall if r.get('Period', 'Annual') == 'Annual']
     def fnum2(x): return float(str(x).replace(',', ''))
@@ -522,7 +545,6 @@ if os.path.exists(SUM_CSV):
     # ---- Gross TWR chart: annual bars + smooth line through annuals and quarterly YTD ----
     _twr_pts = [(_dt.date(y, 12, 31), t) for y, t in _twr_year_vals if t is not None] + _qtwr_pts
     _twr_bars = [(_dt.date(y, 12, 31), t) for y, t in _twr_year_vals if t is not None]
-    twr_chart_b64 = _line_chart([("Gross TWR", _twr_pts)], "Gross TWR", "Return %", legend=False, bars=_twr_bars) if _twr_pts else ""
     twr_html = (
         "<h2>Gross TWR</h2>\n"
         "<table><tr><th></th>" + _yh + "</tr>\n"
@@ -545,6 +567,21 @@ if os.path.exists(SUM_CSV):
         + ".</p>\n"
         f"<p><b>Gross TWR annual averages</b> &mdash; {geo_txt}.</p>\n"
     )
+
+# ---- shared y scale + the two return charts ----
+_allv = [t * 100 for _, t in _twr_pts] + [ar * 100 for _, pts in yield_series for _, ar in pts]
+_shared_ylim = None
+if _allv:
+    _yr = max(_allv) - min(_allv) or 1
+    _shared_ylim = (min(_allv) - _yr * 0.08, max(_allv) + _yr * 0.08)
+twr_chart_b64 = _line_chart([("Gross TWR", _twr_pts)], "Gross TWR", "Return %",
+                            legend=False, bars=_twr_bars, ylim=_shared_ylim,
+                            emphasis={"Gross TWR": "#e65100"}) if _twr_pts else ""
+# ---- historical yield chart: yield lines + Gross TWR curve overlaid (line only) ----
+_ywt = yield_series + ([("Gross TWR", _twr_pts)] if _twr_pts else [])
+yield_chart_b64 = _line_chart(_ywt, "Historical Yield — trailing 1-yr", "Return %",
+                              emphasis={"Gross TWR": "#e65100", "Total": "#1a1a1a"},
+                              hlines=_hl, ylim=_shared_ylim) if _ywt else ""
 
 # ---------------- per-account view ----------------
 rows_acct = []
@@ -578,6 +615,22 @@ if unmapped:
 if unmapped_cfg: flags.append("Config symbols matching no holding: " + ", ".join(unmapped_cfg))
 flag_html = ("<ul class=flags>" + "".join(f"<li>{E(f)}</li>" for f in flags) + "</ul>") if flags else ""
 
+# ---- no statements CSV: skip the TWR chart/section/overlay entirely, keep the rest ----
+_twr_chart_div = (f'<div><img src="data:image/png;base64,{twr_chart_b64}" alt="Gross TWR chart"></div>'
+                  if twr_chart_b64 else "")
+if twr_chart_b64:
+    _cap = ("Gross TWR: bars are the annual returns at each year-end; the smooth line runs through the annuals "
+            "and continues through the cumulative year-to-date quarterly points. Historical yield: trailing 1-year "
+            "total return at each quarter-end over a 10-year scale, with the Total line emphasized; the thick orange "
+            "line overlays the Gross TWR curve (line only, no bars) for comparison. Both return charts share the "
+            "same y-axis scale. The dashed line is the Total's trailing 10-year annualized average. Curves are "
+            "smoothed (flat clamped start); both x-axes are true calendar time.")
+else:
+    _cap = ("Historical yield: trailing 1-year total return at each quarter-end over a 10-year scale, with the "
+            "Total line emphasized. The dashed line is the Total's trailing 10-year annualized average. Curves are "
+            "smoothed (flat clamped start); the x-axis is true calendar time. "
+            "(No statements CSV was supplied, so the Gross TWR section is omitted.)")
+
 html_doc = f"""<!DOCTYPE html><html><head><meta charset="utf-8"><title>{E(REPORT_TITLE)} Summary — As of {E(str(asof))}</title>
 <style>body{{font-family:-apple-system,'Segoe UI',system-ui,sans-serif;max-width:1100px;margin:24px auto;padding:0 16px;color:#1a1a1a}}
 table{{border-collapse:collapse;width:100%;margin:12px 0 28px}}th,td{{border:1px solid #ccc;padding:7px 10px;text-align:left;font-size:14px}}
@@ -589,10 +642,10 @@ h1{{font-size:24px}}h2{{font-size:19px;margin-top:30px}}h3{{font-size:16px;margi
 <body><h1>{E(REPORT_TITLE)} Summary — As of {E(str(asof))}</h1>
 <p class=src>Live Plaid data · {len(positions)} positions across {len([m for m in acct_order if acct_total[m]>0])} accounts · {E(', '.join(brokers))} · prices as of {E(str(asof))}</p>
 <h2>Holdings by Portfolio</h2>
-<div class=charts><div><img src="data:image/png;base64,{chart_b64}" alt="Portfolio pie chart"></div>
-<div><img src="data:image/png;base64,{twr_chart_b64}" alt="Gross TWR chart"></div>
+<div class=charts><div><img src="data:image/png;base64,{chart_b64}" alt="Portfolio allocation donut chart"></div></div>
+<div class=charts>{_twr_chart_div}
 <div><img src="data:image/png;base64,{yield_chart_b64}" alt="Historical yield chart"></div></div>
-<p class=src>Gross TWR: bars are the annual returns at each year-end; the smooth line runs through the annuals and continues through the cumulative year-to-date quarterly points. Historical yield: trailing 1-year total return at each quarter-end over a 10-year scale, with the Total line emphasized; the dashed line is the Total's trailing 10-year annualized average. Curves are smoothed (flat clamped start); both x-axes are true calendar time.</p>
+<p class=src>{_cap}</p>
 {''.join(rows_port)}
 {yield_html}
 {twr_html}

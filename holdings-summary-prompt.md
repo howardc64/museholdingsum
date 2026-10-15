@@ -7,14 +7,14 @@
 The agent requires two inputs, with an optional third:
 
 1. A **holdings config file** — portfolio types, accounts, and yield overrides (e.g. `HN holdings.txt`).
-2. A **statements CSV file** — the account statements file with Year, Period, Account, Beginning Value, Net Changes, Investment Value Change, and Ending Value per account per period (e.g. `NH stmts.csv`). Period is `Annual` for yearly rows and `Q1`–`Q4` for quarterly rows. Used for the Gross TWR section (annual rows only).
+2. A **statements CSV file** (optional) — the account statements file with Year, Period, Account, Beginning Value, Net Changes, Investment Value Change, and Ending Value per account per period (e.g. `NH stmts.csv`). Period is `Annual` for yearly rows and `Q1`–`Q4` for quarterly rows. Used for the Gross TWR section (annual rows only). Pass `none` when there is no statements file: the builder then skips the Gross TWR chart, the TWR overlay line on the Historical Yield chart, and the Gross TWR section, and still produces the rest of the summary.
 3. A **transaction history CSV** (optional) — deducted advisory/alternative-investment fees, added back so returns are gross of fees. Pass `none` when no fee file exists for these accounts; the report then notes fee data is unavailable and computes TWR without a fee add-back.
 
 Howard launches it like:
 
-> Run the holdings summary against `<holdings config>` and `<statements CSV>` [`<transaction history CSV>` | `none`].
+> Run the holdings summary against `<holdings config>` and [`<statements CSV>` | `none`] [`<transaction history CSV>` | `none`].
 
-Without the holdings config and statements CSV, stop and ask for the missing one. The agent needs nothing else.
+Without the holdings config, stop and ask for it. Without a statements CSV (or `none`), skip the Gross TWR chart, TWR overlay line, and Gross TWR section and continue with the rest of the summary. The agent needs nothing else.
 
 ## Holdings config file format
 
@@ -79,7 +79,7 @@ Heading `Holdings by Portfolio`. Three charts side by side at the top, then one 
 
 | Account | Market value | % of portfolio | Cost basis | Unrealized G/L |
 
-- Chart 1: portfolio pie chart. Chart 2: Gross TWR — annual bars at each year-end with a smooth (monotone-cubic) line running through the annuals and continuing through the cumulative year-to-date quarterly points, on a true calendar date axis. Chart 3: Historical Yield — 10-year x scale; smooth lines of the trailing 1-year total return at each quarter-end, one thin muted line per portfolio with the Total line drawn thick and dark on top, same date-axis treatment. A dashed horizontal line marks the Total's trailing 10-year annualized average, labeled with its % value at the right end. No data-point markers on the lines; each line starts with a mirrored ghost sample (flat clamped start) so it never implies enormous prior data. Major x-axis ticks fall on Dec 31 labeled with that year, so an annual point always sits on its own year's tick. A caption under the charts explains the quarterly points.
+- Chart 1: allocation donut chart of holdings by portfolio — muted color segments sorted largest-first, total value centered in the ring ("TOTAL VALUE $…"), and a right-hand legend table with "Category" / "Current (%)" headers, color dots, portfolio names, and percentages. It sits on its own full-width row. Chart 2: Gross TWR — annual bars at each year-end with a smooth (monotone-cubic) orange line running through the annuals and continuing through the cumulative year-to-date quarterly points, on a true calendar date axis. Chart 3: Historical Yield — 10-year x scale; smooth lines of the trailing 1-year total return at each quarter-end, one thin muted line per portfolio with the Total line drawn thick and dark on top, plus the Gross TWR curve overlaid as a thick orange line (line only, no bars). A dashed horizontal line marks the Total's trailing 10-year annualized average, labeled vertically with its % value on the line near the right edge. Charts 2 and 3 are rendered at identical pixel dimensions and share the same y-axis scale (computed across both series) so they read against each other directly, and sit side by side in the row below the donut. No data-point markers on the lines; each line starts with a mirrored ghost sample (flat clamped start) so it never implies enormous prior data. Major x-axis ticks fall on Dec 31 labeled with that year, so an annual point always sits on its own year's tick. A caption under the charts explains the quarterly points.
 
 - One row per account holding the portfolio, in config account order. The Account column uses the same `<Broker> …<mask>` format.
 - The portfolio total is the **last row of the table** (a SUM row labeled "Total").
