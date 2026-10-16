@@ -24,6 +24,7 @@ _PREFIX_MAP = {
     'hn-holdings': ('hn-', 'HN holdings'),
     'gj-holdings': ('gj-idgt-', 'GJ-IDGT holdings'),
     'lily-holdings': ('lily-', 'Lily holdings'),
+    'lily_holdings': ('lily-', 'Lily holdings'),
 }
 _OUT_DEFAULT = _OUT_SLUG + '-' if _OUT_SLUG and not _CFG_SLUG.startswith('rlt') else ''
 OUT_PREFIX, REPORT_TITLE = _PREFIX_MAP.get(
@@ -40,6 +41,7 @@ def pd(d): return datetime.strptime(d.strip(), '%m/%d/%Y').date()
 
 # ---------------- config ----------------
 portfolios, accounts, yield_overrides = [], [], {}
+us_splits = {}
 section = None
 in_hy = False
 for line in open(CONFIG):
@@ -53,6 +55,10 @@ for line in open(CONFIG):
     if in_hy:
         m = re.match(r'(.+?)\s+historical annual yield is constant\s+([0-9.]+)%', s.strip(), re.I)
         if m: yield_overrides[m.group(1).strip()] = float(m.group(2)) / 100.0
+        continue
+    if section == 'US/Foreign Splits':
+        m = re.match(r'([A-Z0-9.\-]{2,})\s+([0-9.]+)%\s*US\b', s.strip(), re.I)
+        if m: us_splits[m.group(1).upper()] = float(m.group(2)) / 100.0
         continue
     if section == 'Portfolio Types':
         if not s.startswith(('\t', ' ')):
@@ -191,31 +197,43 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import math
+def _donut_b64(vals, labels, total, title=None):
+    # allocation donut in the report's style: ring with total value centered,
+    # Category / Current (%) legend table on the right
+    _palette = ['#6ba3be', '#a8bfa0', '#b0a191', '#b9a7c9', '#8fb8b0', '#c9a86a']
+    _dcolors = [_palette[i % len(_palette)] for i in range(len(vals))]
+    _fig0, (_axd, _axl) = plt.subplots(1, 2, figsize=(10, 4.5), gridspec_kw={'width_ratios': [1, 1.15]})
+    if title:
+        _fig0.suptitle(title, fontsize=13, weight='bold')
+    _axd.pie(vals, colors=_dcolors, startangle=90, counterclock=False,
+             wedgeprops=dict(width=0.42, edgecolor='white', linewidth=2))
+    _axd.text(0, 0.10, 'TOTAL VALUE', ha='center', va='center', fontsize=11, color='#777')
+    _axd.text(0, -0.14, f"${total:,.0f}", ha='center', va='center', fontsize=22, weight='bold')
+    _axd.axis('equal')
+    _axl.axis('off')
+    _axl.text(0.0, 0.92, 'Category', fontsize=11, color='#777', transform=_axl.transAxes, va='center')
+    _axl.text(1.0, 0.92, 'Current (%)', fontsize=11, color='#777', transform=_axl.transAxes, va='center', ha='right')
+    for _i, (_lb, _v) in enumerate(zip(labels, vals)):
+        _y = 0.78 - _i * 0.17
+        _axl.plot(0.035, _y, 'o', color=_dcolors[_i], markersize=11, transform=_axl.transAxes, clip_on=False)
+        _axl.text(0.09, _y, _lb, fontsize=12, weight='bold', transform=_axl.transAxes, va='center')
+        _axl.text(0.99, _y, f"{_v/total*100:.2f}%", fontsize=12, transform=_axl.transAxes, va='center', ha='right')
+        _axl.plot([0, 1], [_y - 0.085, _y - 0.085], color='#e0e0e0', linewidth=0.8,
+                  transform=_axl.transAxes, clip_on=False)
+    _buf0 = io.BytesIO(); _fig0.savefig(_buf0, format='png', bbox_inches='tight'); plt.close(_fig0)
+    return base64.b64encode(_buf0.getvalue()).decode()
+
 vals = [port_total[p] for p in port_names if port_total[p] > 0]
 labels = [p for p in port_names if port_total[p] > 0]
 _pairs = sorted(zip(vals, labels), key=lambda t: -t[0])
 vals = [v for v, _ in _pairs]
 labels = [l for _, l in _pairs]
-_palette = ['#6ba3be', '#a8bfa0', '#b0a191', '#b9a7c9', '#8fb8b0', '#c9a86a']
-_dcolors = [_palette[i % len(_palette)] for i in range(len(vals))]
-_fig0, (_axd, _axl) = plt.subplots(1, 2, figsize=(10, 4.5), gridspec_kw={'width_ratios': [1, 1.15]})
-_axd.pie(vals, colors=_dcolors, startangle=90, counterclock=False,
-         wedgeprops=dict(width=0.42, edgecolor='white', linewidth=2))
-_axd.text(0, 0.10, 'TOTAL VALUE', ha='center', va='center', fontsize=11, color='#777')
-_axd.text(0, -0.14, f"${grand:,.0f}", ha='center', va='center', fontsize=22, weight='bold')
-_axd.axis('equal')
-_axl.axis('off')
-_axl.text(0.0, 0.92, 'Category', fontsize=11, color='#777', transform=_axl.transAxes, va='center')
-_axl.text(1.0, 0.92, 'Current (%)', fontsize=11, color='#777', transform=_axl.transAxes, va='center', ha='right')
-for _i, (_lb, _v) in enumerate(zip(labels, vals)):
-    _y = 0.78 - _i * 0.17
-    _axl.plot(0.035, _y, 'o', color=_dcolors[_i], markersize=11, transform=_axl.transAxes, clip_on=False)
-    _axl.text(0.09, _y, _lb, fontsize=12, weight='bold', transform=_axl.transAxes, va='center')
-    _axl.text(0.99, _y, f"{_v/grand*100:.2f}%", fontsize=12, transform=_axl.transAxes, va='center', ha='right')
-    _axl.plot([0, 1], [_y - 0.085, _y - 0.085], color='#e0e0e0', linewidth=0.8,
-              transform=_axl.transAxes, clip_on=False)
-_buf0 = io.BytesIO(); _fig0.savefig(_buf0, format='png', bbox_inches='tight'); plt.close(_fig0)
-chart_b64 = base64.b64encode(_buf0.getvalue()).decode()
+chart_b64 = _donut_b64(vals, labels, grand)
+# second donut: US vs foreign dollars inside the split-covered (global) holdings
+_usd = sum(r['val'] * us_splits[r['ticker']] for r in positions if r['ticker'] in us_splits)
+_frd = sum(r['val'] * (1 - us_splits[r['ticker']]) for r in positions if r['ticker'] in us_splits)
+us_foreign_b64 = _donut_b64([_usd, _frd], ['US', 'Foreign'], _usd + _frd,
+                            title="Global Holdings — US vs Foreign") if _usd + _frd > 0 else ""
 
 # ---------------- smooth time-series line chart helper ----------------
 import matplotlib.dates as mdates
@@ -622,6 +640,9 @@ _twr_chart_div = (f'<div><img src="data:image/png;base64,{twr_chart_b64}" alt="G
 # TWR chart at half the yield chart's width: its ~6yr x-range then matches the
 # yield chart's 10yr x-range in time-per-pixel, so line slopes read the same.
 _twr_chart_div_narrow = _twr_chart_div.replace('<div>', '<div class=narrow>', 1)
+# second donut: US vs foreign within the split-covered global holdings
+_us_foreign_div = (f'<div class=charts><div><img src="data:image/png;base64,{us_foreign_b64}" alt="US vs foreign donut chart"></div></div>'
+                  if us_foreign_b64 else "")
 if twr_chart_b64:
     _cap = ("Gross TWR: bars are the annual returns at each year-end; the smooth line runs through the annuals "
             "and continues through the cumulative year-to-date quarterly points. Historical yield: trailing 1-year "
@@ -647,6 +668,7 @@ h1{{font-size:24px}}h2{{font-size:19px;margin-top:30px}}h3{{font-size:16px;margi
 <p class=src>Live Plaid data · {len(positions)} positions across {len([m for m in acct_order if acct_total[m]>0])} accounts · {E(', '.join(brokers))} · prices as of {E(str(asof))}</p>
 <h2>Holdings by Portfolio</h2>
 <div class=charts><div><img src="data:image/png;base64,{chart_b64}" alt="Portfolio allocation donut chart"></div></div>
+{_us_foreign_div}
 <div class=charts>{_twr_chart_div_narrow}
 <div><img src="data:image/png;base64,{yield_chart_b64}" alt="Historical yield chart"></div></div>
 <p class=src>{_cap}</p>
