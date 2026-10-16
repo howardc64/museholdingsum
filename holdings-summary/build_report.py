@@ -221,7 +221,7 @@ chart_b64 = base64.b64encode(_buf0.getvalue()).decode()
 import matplotlib.dates as mdates
 import numpy as _np
 from scipy.interpolate import PchipInterpolator
-def _line_chart(series, title, ylabel, legend=True, bars=None, emphasis=None, hlines=None, ylim=None):
+def _line_chart(series, title, ylabel, legend=True, bars=None, emphasis=None, hlines=None, ylim=None, figsize=(5.6, 4.2)):
     # series: [(label, [(date, frac), ...])]; monotone-cubic (Pchip) smooth curve
     # on a true date axis — no overshoot between points, x spacing is calendar time.
     # A mirrored ghost sample (same value, one typical interval before the first
@@ -231,7 +231,7 @@ def _line_chart(series, title, ylabel, legend=True, bars=None, emphasis=None, hl
     # muted. A plain string is treated as {label: '#1a1a1a'}. `hlines`: [(frac,
     # label)] horizontal dashed reference lines with a % label at the right end.
     # `ylim`: fixed y-axis range (percent units), used to share a scale across charts.
-    fig, ax = plt.subplots(figsize=(5.6, 4.2), constrained_layout=True)
+    fig, ax = plt.subplots(figsize=figsize, constrained_layout=True)
     if ylim:
         ax.set_ylim(ylim)
     _emph = emphasis if isinstance(emphasis, dict) else ({emphasis: '#1a1a1a'} if emphasis else {})
@@ -576,7 +576,8 @@ if _allv:
     _shared_ylim = (min(_allv) - _yr * 0.08, max(_allv) + _yr * 0.08)
 twr_chart_b64 = _line_chart([("Gross TWR", _twr_pts)], "Gross TWR", "Return %",
                             legend=False, bars=_twr_bars, ylim=_shared_ylim,
-                            emphasis={"Gross TWR": "#e65100"}) if _twr_pts else ""
+                            emphasis={"Gross TWR": "#e65100"},
+                            figsize=(2.8, 4.2)) if _twr_pts else ""
 # ---- historical yield chart: yield lines + Gross TWR curve overlaid (line only) ----
 _ywt = yield_series + ([("Gross TWR", _twr_pts)] if _twr_pts else [])
 yield_chart_b64 = _line_chart(_ywt, "Historical Yield — trailing 1-yr", "Return %",
@@ -618,6 +619,9 @@ flag_html = ("<ul class=flags>" + "".join(f"<li>{E(f)}</li>" for f in flags) + "
 # ---- no statements CSV: skip the TWR chart/section/overlay entirely, keep the rest ----
 _twr_chart_div = (f'<div><img src="data:image/png;base64,{twr_chart_b64}" alt="Gross TWR chart"></div>'
                   if twr_chart_b64 else "")
+# TWR chart at half the yield chart's width: its ~6yr x-range then matches the
+# yield chart's 10yr x-range in time-per-pixel, so line slopes read the same.
+_twr_chart_div_narrow = _twr_chart_div.replace('<div>', '<div class=narrow>', 1)
 if twr_chart_b64:
     _cap = ("Gross TWR: bars are the annual returns at each year-end; the smooth line runs through the annuals "
             "and continues through the cumulative year-to-date quarterly points. Historical yield: trailing 1-year "
@@ -638,12 +642,12 @@ th{{background:#f2f2f2}}td.n{{text-align:right;font-variant-numeric:tabular-nums
 h1{{font-size:24px}}h2{{font-size:19px;margin-top:30px}}h3{{font-size:16px;margin-top:20px}}.tline{{font-weight:bold}}
 .flags{{background:#fff8e1;border:1px solid #e6c200;padding:10px 16px;border-radius:6px}}.src{{color:#555;font-size:14px}}
 .charts{{display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap;margin:8px 0 20px}}
-.charts div{{flex:1;min-width:340px}}.charts img{{max-width:100%;width:100%;height:auto;display:block}}</style></head>
+.charts div{{flex:1;min-width:340px}}.charts div.narrow{{flex:0.5;min-width:200px}}.charts img{{max-width:100%;width:100%;height:auto;display:block}}</style></head>
 <body><h1>{E(REPORT_TITLE)} Summary — As of {E(str(asof))}</h1>
 <p class=src>Live Plaid data · {len(positions)} positions across {len([m for m in acct_order if acct_total[m]>0])} accounts · {E(', '.join(brokers))} · prices as of {E(str(asof))}</p>
 <h2>Holdings by Portfolio</h2>
 <div class=charts><div><img src="data:image/png;base64,{chart_b64}" alt="Portfolio allocation donut chart"></div></div>
-<div class=charts>{_twr_chart_div}
+<div class=charts>{_twr_chart_div_narrow}
 <div><img src="data:image/png;base64,{yield_chart_b64}" alt="Historical yield chart"></div></div>
 <p class=src>{_cap}</p>
 {''.join(rows_port)}
